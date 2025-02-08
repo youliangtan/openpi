@@ -6,6 +6,7 @@ from openpi_client import base_policy as _base_policy
 from openpi_client import msgpack_numpy
 import websockets.asyncio.server
 import websockets.frames
+import time
 
 
 class WebsocketPolicyServer:
@@ -48,11 +49,17 @@ class WebsocketPolicyServer:
 
         while True:
             try:
+                wait_time = time.time()
                 obs = msgpack_numpy.unpackb(await websocket.recv())
+                logging.info(f"wait time: {time.time() - wait_time}")
+                start_time = time.time()
+                # print keys and shapes of obs if shape is available
                 action = self._policy.infer(obs)
+                logging.info(f"inference time: {time.time() - start_time}")
                 await websocket.send(packer.pack(action))
             except websockets.ConnectionClosed:
-                logging.info(f"Connection from {websocket.remote_address} closed")
+                logging.info(
+                    f"Connection from {websocket.remote_address} closed")
                 break
             except Exception:
                 await websocket.send(traceback.format_exc())
