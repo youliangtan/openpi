@@ -122,12 +122,18 @@ class ModelTransformFactory(GroupFactory):
                         _transforms.InjectDefaultPrompt(self.default_prompt),
                         _transforms.ResizeImages(224, 224),
                         _transforms.TokenizeFASTInputs(
-                            _tokenizer.FASTTokenizer(model_config.max_token_len),
+                            _tokenizer.FASTTokenizer(
+                                model_config.max_token_len,
+                                fast_tokenizer_path=model_config.fast_tokenizer_path
+                            ),
                         ),
                     ],
                     outputs=[
                         _transforms.ExtractFASTActions(
-                            _tokenizer.FASTTokenizer(model_config.max_token_len),
+                            _tokenizer.FASTTokenizer(
+                                model_config.max_token_len,
+                                fast_tokenizer_path=model_config.fast_tokenizer_path
+                            ),
                             action_horizon=model_config.action_horizon,
                             action_dim=model_config.action_dim,
                         )
@@ -368,6 +374,11 @@ class TrainConfig:
     # Determines the data to be trained on.
     data: DataConfigFactory = dataclasses.field(default_factory=FakeDataConfig)
 
+    # validation data
+    validation_data: DataConfigFactory | None = None
+    # validation interval
+    validation_interval: int = 1000
+
     # Base directory for config assets (e.g., norm stats).
     assets_base_dir: str = "./assets"
     # Base directory for checkpoints.
@@ -551,6 +562,7 @@ _CONFIGS = [
         ).get_freeze_filter(),
         ema_decay=None,
     ),
+    #############################################################################################
     # Expert data fine-tuning
     TrainConfig(
         name="pi0_ft_expert_low_mem_finetune",
@@ -572,9 +584,35 @@ _CONFIGS = [
         ema_decay=None,
         batch_size=64,
         log_interval=20,
+        save_interval=500,
+        keep_period=500,
+    ),
+    # TODO: custom train a fast tokenizer
+    TrainConfig(
+        name="pi0_fast_ft_expert_low_mem_finetune",
+        model=pi0_fast.Pi0FASTConfig(
+            paligemma_variant="gemma_2b_lora", max_token_len=350, fast_tokenizer_path="gr1_fast_tokenizer",
+        ),
+        data=LeRobotFtExpertDataConfig(
+            repo_id="youliangtan/ft_expert_data",
+            base_config=DataConfig(
+                local_files_only=True,  # Set to True for local-only datasets.
+                prompt_from_task=True,
+            ),
+        ),
+        lr_schedule=_optimizer.CosineDecaySchedule(warmup_steps=1_000, peak_lr=2.e-5),
+        weight_loader=weight_loaders.CheckpointWeightLoader("s3://openpi-assets/checkpoints/pi0_fast_base/params"),
+        num_train_steps=80_00,
+        freeze_filter=pi0_fast.Pi0FASTConfig(
+            paligemma_variant="gemma_2b_lora", max_token_len=350, fast_tokenizer_path="custom_fast_tokenizer",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=64,
+        log_interval=20,
         save_interval=200,
         keep_period=200,
     ),
+    #############################################################################################
     #
     # Fine-tuning Aloha configs.
     #

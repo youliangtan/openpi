@@ -46,6 +46,14 @@ class Policy(BasePolicy):
         inputs = jax.tree.map(lambda x: jnp.asarray(x)[np.newaxis, ...], inputs)
 
         self._rng, sample_rng = jax.random.split(self._rng)
+        
+        # print("\n sample_rng", sample_rng)
+        # sample_rng = jax.random.PRNGKey(0)
+        # if "seed" in inputs:
+        #     # we will use the seed in the inputs
+        #     print("WARNING! Using seed in inputs")
+        #     sample_rng = jax.random.PRNGKey(inputs["seed"])
+
         outputs = {
             "state": inputs["state"],
             "actions": self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), **self._sample_kwargs),
