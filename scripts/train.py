@@ -26,6 +26,59 @@ import openpi.training.sharding as sharding
 import openpi.training.utils as training_utils
 import openpi.training.weight_loaders as _weight_loaders
 
+import time
+from contextlib import contextmanager
+from collections import defaultdict
+
+class Timer:
+    """
+    Timer utility. Usage:
+
+        timer = Timer()
+        with timer("foo"):
+            do_something()
+
+        timer.tick("bar")
+        do_something_else()
+        timer.tock("bar")
+
+        timer.get_average_times() -> {"foo": 0.1, "bar": 0.2}
+    """
+
+    def __init__(self):
+        self.reset()
+
+    @contextmanager
+    def __call__(self, key):
+        self.tick(key)
+        try:
+            yield None
+        finally:
+            self.tock(key)
+
+    def reset(self):
+        self.counts = defaultdict(int)
+        self.times = defaultdict(float)
+        self.start_times = {}
+
+    def tick(self, key):
+        if key in self.start_times:
+            raise ValueError(f"Timer is already ticking for key: {key}")
+        self.start_times[key] = time.time()
+
+    def tock(self, key):
+        if key not in self.start_times:
+            raise ValueError(f"Timer is not ticking for key: {key}")
+        self.counts[key] += 1
+        self.times[key] += time.time() - self.start_times[key]
+        del self.start_times[key]
+
+    def get_average_times(self, reset=True):
+        ret = {key: self.times[key] / self.counts[key] for key in self.counts}
+        if reset:
+            self.reset()
+        return ret
+
 
 def init_logging():
     """Custom logging format for better readability."""
@@ -249,19 +302,28 @@ def main(config: _config.TrainConfig):
         dynamic_ncols=True,
     )
 
+    timer = Timer()
+
     infos = []
     for step in pbar:
         with sharding.set_mesh(mesh):
-            train_state, info = ptrain_step(train_rng, train_state, batch)
+            with timer("train"):
+                train_state, info = ptrain_step(train_rng, train_state, batch)
         infos.append(info)
         if step % config.log_interval == 0:
             stacked_infos = common_utils.stack_forest(infos)
             reduced_info = jax.device_get(jax.tree.map(jnp.mean, stacked_infos))
             info_str = ", ".join(f"{k}={v:.4f}" for k, v in reduced_info.items())
+            
+            # add "timer": timer.get_average_times()}, to the reduced_info
+            reduced_info["timer"] = timer.get_average_times()
+
             pbar.write(f"Step {step}: {info_str}")
             wandb.log(reduced_info, step=step)
             infos = []
-        batch = next(data_iter)
+
+        with timer("dataset"):
+            batch = next(data_iter)
 
         if (step % config.save_interval == 0 and step > start_step) or step == config.num_train_steps - 1:
             _checkpoints.save_state(checkpoint_manager, train_state, data_loader, step)

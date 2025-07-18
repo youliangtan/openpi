@@ -33,6 +33,12 @@ class FtExpertInputs(transforms.DataTransformFn):
 
     # Determines which model will be used.
     model_type: _model.ModelType = _model.ModelType.PI0
+    
+    # if use state
+    state_noise: float = 0.0
+
+    # zero state
+    zero_state: bool = False
 
     def __call__(self, data: dict) -> dict:
         mask_padding = self.model_type == _model.ModelType.PI0  # We don't mask for pi0-FAST.
@@ -40,6 +46,13 @@ class FtExpertInputs(transforms.DataTransformFn):
         # Get the state. We are padding from 8 to the model action dim.
         # For pi0-FAST, we don't pad the state (action_dim = 7, which is < 8, so pad is skipped).
         state = transforms.pad_to_dim(data["observation/state"], self.action_dim)
+        
+        # NOTE(YL): try add gaussian noise to the state, aka similar to regularization o
+        if self.state_noise > 0.001:
+            state = state + np.random.normal(0, self.state_noise, state.shape)
+
+        if self.zero_state:
+            state = np.zeros_like(state)
 
         # Possibly need to parse images to uint8 (H,W,C) since LeRobot automatically
         # stores as float32 (C,H,W), gets skipped for policy inference

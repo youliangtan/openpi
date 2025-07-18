@@ -48,7 +48,7 @@ class Policy(BasePolicy):
         self._rng, sample_rng = jax.random.split(self._rng)
         
         # print("\n sample_rng", sample_rng)
-        # sample_rng = jax.random.PRNGKey(0)
+        sample_rng = jax.random.PRNGKey(0)
         # if "seed" in inputs:
         #     # we will use the seed in the inputs
         #     print("WARNING! Using seed in inputs")

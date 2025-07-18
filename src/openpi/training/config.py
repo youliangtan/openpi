@@ -303,6 +303,9 @@ class LeRobotLiberoDataConfig(DataConfigFactory):
 class LeRobotFtExpertDataConfig(DataConfigFactory):
     # We will use absolute actions for the expert data
     use_delta_joint_actions: bool = False
+    
+    # if we would like to apply noise to the state, default nothing
+    state_noise: float = 0.0
 
     @override
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
@@ -323,7 +326,11 @@ class LeRobotFtExpertDataConfig(DataConfigFactory):
         # Prepare data for policy training
         # Convert images to uint8 numpy arrays, add masks
         data_transforms = _transforms.Group(
-            inputs=[ft_expert_policy.FtExpertInputs(action_dim=model_config.action_dim, model_type=model_config.model_type)],
+            inputs=[ft_expert_policy.FtExpertInputs(
+                action_dim=model_config.action_dim,
+                model_type=model_config.model_type,
+                state_noise=self.state_noise,
+            )],
             outputs=[ft_expert_policy.FtExpertOutputs()],
         )
 
@@ -573,6 +580,7 @@ _CONFIGS = [
                 local_files_only=True,  # Set to True for local-only datasets
                 prompt_from_task=True,
             ),
+            state_noise=0.0, # standard deviation default nothing
         ),
         #NOTE (YL): smaller lr as im getting exploding gradients sometimes
         lr_schedule=_optimizer.CosineDecaySchedule(warmup_steps=1_000, peak_lr=2.e-5),
@@ -604,7 +612,7 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("s3://openpi-assets/checkpoints/pi0_fast_base/params"),
         num_train_steps=80_00,
         freeze_filter=pi0_fast.Pi0FASTConfig(
-            paligemma_variant="gemma_2b_lora", max_token_len=350, fast_tokenizer_path="custom_fast_tokenizer",
+            paligemma_variant="gemma_2b_lora", max_token_len=350, fast_tokenizer_path="gr1_fast_tokenizer",
         ).get_freeze_filter(),
         ema_decay=None,
         batch_size=64,
